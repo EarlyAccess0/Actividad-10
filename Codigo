@@ -1,0 +1,255 @@
+
+!pip install PyPDF2
+import re
+import time
+from collections import defaultdict
+import PyPDF2
+from google.colab import files
+
+# ========================
+# FUNCIÓN PARA LEER PDFs
+# ========================
+
+def extract_text_from_pdf(pdf_path):
+    """Extrae texto de un archivo PDF"""
+    try:
+        with open(pdf_path, 'rb') as file:
+            reader = PyPDF2.PdfReader(file)
+            text = ""
+            for page in reader.pages:
+                text += page.extract_text() + "\n"
+        print(f"PDF {pdf_path} procesado correctamente")
+        return text
+    except Exception as e:
+        print(f"Error al leer PDF {pdf_path}: {e}")
+        return ""
+
+def upload_and_process_pdfs():
+    """Sube PDFs desde tu computadora y los procesa"""
+    print("Selecciona tus archivos PDF...")
+    uploaded = files.upload()
+
+    pdf_texts = {}
+    for filename in uploaded.keys():
+        if filename.endswith('.pdf'):
+            text = extract_text_from_pdf(filename)
+            if text:
+                pdf_texts[filename] = text
+                print(f"  - {filename}: {len(text)} caracteres extraídos")
+
+    return pdf_texts
+
+# ========================
+# SIMULACIÓN DE HDFS
+# ========================
+
+class SimpleHDFS:
+    """Simulación simple de HDFS"""
+    def __init__(self):
+        self.files = {}
+
+    def put(self, filename, content):
+        self.files[filename] = content
+        print(f"Archivo {filename} subido a HDFS")
+
+    def get(self, filename):
+        return self.files.get(filename, "")
+
+    def ls(self):
+        print("Archivos en HDFS:")
+        for filename in self.files:
+            print(f"  - {filename}")
+
+# ========================
+# MAPPER
+# ========================
+
+def mapper(text):
+    """
+    Mapper: lee texto, tokeniza en palabras y emite pares (palabra, 1)
+    """
+    words = re.findall(r'\b[a-záéíóúñü]+\b', text.lower())
+    result = []
+    for word in words:
+        if word:
+            result.append((word, 1))
+    return result
+
+# ========================
+# REDUCER
+# ========================
+
+def reducer(word_pairs):
+    """
+    Reducer: agrega los valores para cada palabra
+    """
+    word_count = defaultdict(int)
+    for word, count in word_pairs:
+        word_count[word] += count
+    return dict(word_count)
+
+# ========================
+# MAPREDUCE FRAMEWORK
+# ========================
+
+class MapReduceFramework:
+    """Framework simple de MapReduce"""
+
+    def __init__(self):
+        self.hdfs = SimpleHDFS()
+
+    def run_job(self, input_files, num_reducers=1):
+        """Ejecuta un job MapReduce"""
+
+        print(f"Iniciando job MapReduce con {num_reducers} reducer(s)")
+        start_time = time.time()
+
+        # FASE MAP
+        print("Fase MAP...")
+        all_pairs = []
+        for filename in input_files:
+            content = self.hdfs.get(filename)
+            pairs = mapper(content)
+            all_pairs.extend(pairs)
+            print(f"  - {filename}: {len(pairs)} pares generados")
+
+        # SHUFFLE & SORT (simulado)
+        print("Fase SHUFFLE & SORT...")
+        all_pairs.sort(key=lambda x: x[0])
+
+        # FASE REDUCE
+        print("Fase REDUCE...")
+        final_result = reducer(all_pairs)
+
+        end_time = time.time()
+        execution_time = end_time - start_time
+
+        print(f"Job completado en {execution_time:.2f} segundos")
+
+        return final_result, execution_time
+
+# ========================
+# DATOS DE EJEMPLO
+# ========================
+
+# Crear archivos de ejemplo
+sample_texts = {
+    "documento1.txt": """
+    Hadoop es una plataforma de software libre para el procesamiento distribuido.
+    MapReduce es un paradigma de programación para procesamiento paralelo.
+    Apache Hadoop facilita el procesamiento de grandes volúmenes de datos.
+    El procesamiento distribuido es fundamental en big data.
+    Python es un lenguaje versátil para desarrollo de aplicaciones.
+    """,
+
+    "documento2.txt": """
+    El framework MapReduce divide el trabajo en pequeñas tareas.
+    Hadoop streaming permite usar Python con MapReduce.
+    La programación distribuida es compleja pero poderosa.
+    Apache Spark es una alternativa moderna a MapReduce.
+    El procesamiento paralelo mejora significativamente el rendimiento.
+    """,
+
+    "documento3.txt": """
+    Big data requiere herramientas especializadas como Hadoop.
+    MapReduce fue desarrollado por Google para procesamiento masivo.
+    Python streaming facilita la implementación de jobs MapReduce.
+    El paradigma distribuido es esencial para escalabilidad.
+    Apache Hadoop es el estándar de facto para big data.
+    """
+}
+
+# ========================
+# EJECUCIÓN PRINCIPAL
+# ========================
+
+def main():
+    """Función principal"""
+
+    print("=" * 60)
+    print("HADOOP MAPREDUCE WORDCOUNT - SIMULACIÓN")
+    print("=" * 60)
+
+    # Crear framework
+    framework = MapReduceFramework()
+
+    # OPCIÓN 1: Usar archivos de ejemplo
+    # OPCIÓN 2: Subir tus propios PDFs
+    print("\nSELECCIONA UNA OPCIÓN:")
+    print("1. Usar archivos de ejemplo")
+    print("2. Subir mis propios PDFs")
+
+    choice = input("Escribe 1 o 2: ").strip()
+
+    if choice == "2":
+        print("\nSUBIENDO TUS PDFs...")
+        pdf_texts = upload_and_process_pdfs()
+
+        if pdf_texts:
+            print(f"\n{len(pdf_texts)} PDFs procesados correctamente")
+            # Usar los PDFs subidos
+            texts_to_process = pdf_texts
+        else:
+            print("No se pudieron procesar PDFs. Usando archivos de ejemplo...")
+            texts_to_process = sample_texts
+    else:
+        print("\nUsando archivos de ejemplo...")
+        texts_to_process = sample_texts
+
+    # Subir archivos a HDFS simulado
+    print("\nSubiendo archivos a HDFS...")
+    for filename, content in texts_to_process.items():
+        framework.hdfs.put(filename, content)
+
+    framework.hdfs.ls()
+
+    # Ejecutar jobs con diferentes números de reducers
+    results = {}
+    reducer_counts = [1, 2, 4]
+
+    print("\nANÁLISIS DE RENDIMIENTO")
+    print("-" * 40)
+
+    for num_reducers in reducer_counts:
+        print(f"\n--- Prueba con {num_reducers} reducer(s) ---")
+
+        word_counts, exec_time = framework.run_job(
+            list(texts_to_process.keys()),
+            num_reducers
+        )
+
+        results[num_reducers] = {
+            'word_counts': word_counts,
+            'time': exec_time
+        }
+
+        # Mostrar top 10 palabras
+        top_words = sorted(word_counts.items(), key=lambda x: x[1], reverse=True)[:10]
+        print(f"Top 10 palabras más frecuentes:")
+        for word, count in top_words:
+            print(f"  {word}: {count}")
+
+    # Análisis comparativo
+    print("\nRESUMEN DE RENDIMIENTO")
+    print("=" * 40)
+    print("Reducers\tTiempo (s)\tSpeedup")
+    print("-" * 35)
+
+    base_time = results[1]['time']
+    for num_reducers in reducer_counts:
+        time_taken = results[num_reducers]['time']
+        speedup = base_time / time_taken if time_taken > 0 else 1
+        print(f"{num_reducers}\t\t{time_taken:.3f}\t\t{speedup:.2f}x")
+
+    # Estadísticas finales
+    total_words = sum(word_counts.values())
+    unique_words = len(word_counts)
+
+    print(f"\n ESTADÍSTICAS FINALES")
+    print(f"Total de palabras procesadas: {total_words}")
+    print(f"Palabras únicas encontradas: {unique_words}")
+    print(f"Promedio de apariciones por palabra: {total_words/unique_words:.2f}")
+
+
+if __name__ == "__main__":
+    main()
